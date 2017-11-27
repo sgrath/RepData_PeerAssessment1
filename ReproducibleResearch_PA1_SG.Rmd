@@ -1,0 +1,235 @@
+---
+title: "Reproducible Research - Course Project 1"
+author: "S. Grath"
+date: "November 24, 2017"
+output: html_document
+---
+
+##Activity Monitoring Data
+###Loading and preprocessing the data
+
+```{r}
+#Load activity data
+myActivityData <- read.table("activity.csv", sep = ",", header = TRUE)
+#Some controls
+summary(myActivityData)
+str(myActivityData)
+names(myActivityData)
+```
+
+###What is mean total number of steps taken per day?
+
+For this part of the assignment, I ignored the missing values in the dataset.
+
+```{r}
+#Calculate the mean - ignore na values
+meanStepsDay <- tapply(myActivityData$steps, 
+                       myActivityData$date, 
+                       sum, 
+                       na.rm = TRUE)
+#Convert into data frame
+meanStepsDay <- as.data.frame(as.matrix(tapply(myActivityData$steps, 
+                                               myActivityData$date, 
+                                               sum, 
+                                               na.rm = TRUE)))
+#Change column names
+colnames(meanStepsDay) <- c("totalStepsDay")
+#Print data frame
+meanStepsDay
+
+#Plot histogram
+library(ggplot2)
+ggplot(meanStepsDay, aes(x=totalStepsDay)) + 
+    geom_histogram(binwidth = 1000, 
+                   fill = "green", 
+                   colour = "red", 
+                   size=0.2) + 
+    labs(title="Histogram for total number of steps per day") +
+    labs(x="steps per day", y="count") + 
+    theme(
+        plot.title = element_text(color="black", 
+                                  size=14, 
+                                  face="bold", 
+                                  hjust = 0.5)
+    )
+ggsave("1.Histogram.pdf")
+#Calculate mean and median
+meanSteps <- as.integer(mean(meanStepsDay$totalStepsDay))
+medianSteps <- as.integer(median(meanStepsDay$totalStepsDay))
+```
+
+The average number of steps per day is `r meanSteps`. The median number of steps per day is `r medianSteps`. Note that I gave the mean and median numbers as integers. In my opinion, only full steps make sense here.
+
+###What is the average daily activity pattern?
+
+First, I made a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged over all days (y-axis). Second, I calculated the 5-minute interval, that, on average across all days in the dataset, contains the maximum number of steps.
+
+```{r}
+intervalSteps <- aggregate(myActivityData$steps, 
+                           list(myActivityData$interval), 
+                           mean, 
+                           na.rm = TRUE)
+colnames(intervalSteps) <- c("interval", "averageSteps")
+ggplot(intervalSteps, aes(interval, averageSteps)) + 
+    geom_line() +
+    labs(title="Time series plot with average number of steps per interval") +
+    labs(y="average steps", x="interval") + 
+    theme(
+        plot.title = element_text(color="black", 
+                                  size=14, 
+                                  face="bold", 
+                                  hjust = 0.5)
+    )
+ggsave("2.TimeSeriesPlot.pdf")
+mostSteps <- intervalSteps[which.max(intervalSteps$averageSteps), ]
+myInterval <- mostSteps$interval
+mySteps <- as.integer(mostSteps$averageSteps)
+```
+
+The **interval with the maximum number of steps** on average is: `r myInterval` <br>
+This interval has on average `r mySteps` steps. Again, the step value is given as integer.
+
+###Imputing missing values
+
+Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.<br>
+First, I calculated and reported the total number of missing values in the dataset (i.e. the total number of rows with NAs). Second, I defined a strategy for filling in all missing values in the dataset. I used the mean for any given 5-minute interval. Third, I created a new dataset that is equal to the original dataset but with the missing data filled in. Last, I draw a histogram of the total number of steps taken each day and calculated and reported the mean and median total number of steps taken per day.
+
+```{r}
+missingValues<- is.na(myActivityData$steps)
+missingValuesTotal <- sum(as.numeric(missingValues))
+```
+
+The **total number of missing values** (rows with NA) is:** `r missingValuesTotal`
+
+```{r}
+for (i in 1:length(myActivityData$steps)){
+    if (is.na(myActivityData$steps[i] == TRUE)){        
+        myActivityData$steps[i] <- 
+            intervalSteps$averageSteps[match(myActivityData$interval[i], 
+                                             intervalSteps$interval)]  
+    } 
+}
+
+meanStepsDayModified <- as.data.frame(as.matrix(tapply(myActivityData$steps, 
+                                                       myActivityData$date, 
+                                                       sum)))
+colnames(meanStepsDayModified) <- c("totalStepsDayModified")
+
+ggplot(meanStepsDayModified, aes(x=totalStepsDayModified)) + 
+    geom_histogram(binwidth = 1000, 
+                   fill = "green", 
+                   colour = "red", 
+                   size=0.2) + 
+    labs(title="Histogram for total number of steps per day (data modified)") +
+    labs(x="steps per day (modified)", y="count") + 
+    theme(
+        plot.title = element_text(color="black", 
+                                  size=14, 
+                                  face="bold", 
+                                  hjust = 0.5)
+    ) 
+ggsave("3.HistogramModifiedData.pdf")
+#Calculate mean and median
+meanStepsModified <- as.integer(mean(meanStepsDayModified$totalStepsDayModified))
+medianStepsModified <- as.integer(median(meanStepsDayModified$totalStepsDayModified))
+```
+
+The **mean number of steps** in the modified dataset is: `r meanStepsModified`.
+The **median number of steps** in the modified dataset is: `r medianStepsModified`.<br>
+
+To compare the original with the modified dataset, I draw histograms of the total number of steps per day for both datasets next to each other. You can see, that in the modified dataset the number of times with 0 steps per day decreases, while the numbers of times with average steps per day (e.g. 10 000 steps) increase.
+
+```{r}
+#Direct comparison of original data set with modified data set
+combination <- merge(meanStepsDay, meanStepsDayModified)
+library(reshape2)
+combination <- melt(combination)
+colnames(combination) <- c("type", "totalStepsDay")
+
+labels <- c(totalStepsDay = "total steps per day", 
+            totalStepsDayModified = "total steps per day (modified)")
+ggplot(combination, aes(x=totalStepsDay)) + 
+    geom_histogram(binwidth = 1000, 
+                   fill = "orange", 
+                   colour = "grey60", 
+                   size=0.2) + 
+    facet_grid(.~ type, 
+               labeller = labeller(type = labels)) +
+    labs(title="Total number of steps per day for both data sets") +
+    labs(x="steps per day", y="count") + 
+    theme(
+        plot.title = element_text(color="black", 
+                                  size=14, 
+                                  face="bold", 
+                                  hjust = 0.5)
+    ) +
+    theme(axis.title = element_text(face = "bold", 
+                                    size = rel(1.0)),
+          strip.text = element_text(face = "bold", 
+                                    size = rel(1.0)),
+          strip.background = element_rect(fill="lightblue", 
+                                          colour = "black", 
+                                          size = 1))
+ggsave("4.HistogramsComparison.pdf")
+```
+
+###Are there differences in activity patterns between weekdays and weekends?
+
+For this part of the assignment, I used the weekdays() function and the dataset with the filled-in missing values.<br>
+
+```{r}
+#Add the day-of-week column
+myActivityData$day <- weekdays(as.Date(myActivityData$date), abbreviate=FALSE)
+
+#Convert day-of-week column vales to Weekday or Weekend
+#CAUTION! German system of date format - Samstag = Saturday, Sonntag = Sunday
+#Script would work for both English and German day names
+for (i in 1:length(myActivityData$day)){
+    if (myActivityData$day[i] == "Samstag" 
+        || myActivityData$day[i] == "Sonntag"
+        || myActivityData$day[i] == "Saturday" 
+        || myActivityData$day[i] == "Sunday"){
+        myActivityData$day[i] <- "Weekend"
+    } else {
+        myActivityData$day[i] <- "Weekday"
+    }
+}
+
+#Subset the data based on 'day' (Weekend or Weekday)
+activityDataWeekend <- subset(myActivityData, day == "Weekend")
+activityDataWeekday <- subset(myActivityData, day == "Weekday")
+
+#Calculate the average interval steps for weekend and weekdays separetely
+activityIntervalStepsWeekend <- aggregate(activityDataWeekend$steps, 
+                                          list(activityDataWeekend$interval), 
+                                          mean, 
+                                          na.rm = TRUE)
+activityIntervalStepsWeekday <- aggregate(activityDataWeekday$steps, 
+                                          list(activityDataWeekday$interval), 
+                                          mean)
+#Change colnames
+colnames(activityIntervalStepsWeekend) <- c("interval", "weekend")
+colnames(activityIntervalStepsWeekday) <- c("interval", "weekday")
+
+#Combine in one data frame
+DF <- merge(activityIntervalStepsWeekday, activityIntervalStepsWeekend)
+DF <- melt(DF, id = "interval")
+
+#Plot
+colnames(DF) <- c("interval", "type", "numberSteps")
+ggplot(DF, aes(interval,  numberSteps)) + 
+    geom_line(colour="#000099") + 
+    facet_wrap(~ type, nrow = 2) +
+    labs(x="Interval", y="Number of Steps") + 
+    theme(axis.title = element_text(face = "bold", size = rel(1.0)),
+          strip.text = element_text(face = "bold", size = rel(1.0)),
+          strip.background = element_rect(fill="lightblue", 
+                                          colour = "black", 
+                                          size = 1))
+ggsave("5.ComparisonWeekendWeekday.pdf")
+```
+
+```{r}
+sessionInfo()
+Sys.time()
+```
